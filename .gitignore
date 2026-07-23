@@ -1,0 +1,5 @@
+public/
+node_modules/
+*.tar.gz
+.DS_Store
+.vercel
