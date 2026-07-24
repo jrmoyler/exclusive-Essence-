@@ -117,8 +117,8 @@ function throttled(ip) {
 
 const ADMIN_URL = () => `https://${SHOP}/admin/api/${ADMIN_VERSION}/graphql.json`;
 
-function adminQuery(query, variables) {
-  return fetchJSON(ADMIN_URL(), {
+async function adminQuery(query, variables) {
+  const res = await fetchJSON(ADMIN_URL(), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -126,6 +126,16 @@ function adminQuery(query, variables) {
     },
     body: JSON.stringify({ query, variables }),
   });
+  if (!res.ok) throw new Error(`shopify http ${res.status}`);
+  // Shopify returns HTTP 200 with a top-level errors[] for ACCESS_DENIED and
+  // THROTTLED, leaving data null. Swallowing that reports a write as succeeding
+  // when nothing was written, and the client then drops the queued lead.
+  const top = res.json && res.json.errors;
+  if (Array.isArray(top) && top.length) {
+    throw new Error('shopify graphql: ' +
+      top.map(e => e && e.message).filter(Boolean).join('; '));
+  }
+  return res;
 }
 
 const CREATE = `mutation eeCustomerCreate($input: CustomerInput!) {
@@ -162,30 +172,42 @@ async function sendToShopify(lead) {
   if (last) input.lastName = last;
   if (lead.phoneE164) input.phone = lead.phoneE164;
 
-  let res = await adminQuery(CREATE, { input });
-  if (!res.ok) throw new Error(`shopify http ${res.status}`);
+  const created = r => r.json && r.json.data && r.json.data.customerCreate;
 
-  let errs = (res.json && res.json.data && res.json.data.customerCreate &&
-    res.json.data.customerCreate.userErrors) || [];
+  let res = await adminQuery(CREATE, { input });
+  let errs = (created(res) && created(res).userErrors) || [];
 
   // A phone already attached to someone else must not sink the whole lead.
   if (errs.some(e => /phone/i.test(String(e.field)) || /phone/i.test(e.message)) && input.phone) {
     delete input.phone;
     res = await adminQuery(CREATE, { input });
-    errs = (res.json && res.json.data && res.json.data.customerCreate &&
-      res.json.data.customerCreate.userErrors) || [];
+    errs = (created(res) && created(res).userErrors) || [];
   }
 
-  if (!errs.length) return 'created';
+  // Only claim success if Shopify actually handed back a customer.
+  if (!errs.length) {
+    const c = created(res);
+    if (c && c.customer && c.customer.id) return 'created';
+    throw new Error('shopify: customerCreate returned no customer and no userErrors');
+  }
 
   // Existing customer: merge our tags in rather than clobbering theirs.
   if (errs.some(e => /taken|already/i.test(e.message))) {
-    const found = await adminQuery(FIND, { q: `email:"${lead.email}"` });
+    const q = 'email:"' + String(lead.email).replace(/["\\]/g, '\\$&') + '"';
+    const found = await adminQuery(FIND, { q });
     const node = found.json && found.json.data && found.json.data.customers &&
       found.json.data.customers.edges[0] && found.json.data.customers.edges[0].node;
     if (!node) return 'duplicate';
     const merged = Array.from(new Set([].concat(node.tags || [], LEAD_TAGS)));
-    const upd = await adminQuery(UPDATE, { input: { id: node.id, tags: merged } });
+    // Record consent on returning subscribers too — tagging alone was losing the
+    // opt-in that the whole capture exists to collect.
+    const upd = await adminQuery(UPDATE, {
+      input: {
+        id: node.id,
+        tags: merged,
+        emailMarketingConsent: input.emailMarketingConsent,
+      },
+    });
     const uerr = (upd.json && upd.json.data && upd.json.data.customerUpdate &&
       upd.json.data.customerUpdate.userErrors) || [];
     return uerr.length ? 'duplicate' : 'updated';
