@@ -39,16 +39,45 @@ inject() { # $1 = JS const name, $2 = value
   echo "    ${name} <- set"
 }
 
-: "${SHOPIFY_STORE_DOMAIN:?FATAL: SHOPIFY_STORE_DOMAIN is not set}"
-: "${SHOPIFY_STOREFRONT_TOKEN:?FATAL: SHOPIFY_STOREFRONT_TOKEN is not set}"
-inject EE_SHOPIFY_DOMAIN "$SHOPIFY_STORE_DOMAIN"
-inject EE_SHOPIFY_TOKEN  "$SHOPIFY_STOREFRONT_TOKEN"
-[ -n "${SHOPIFY_API_VERSION:-}" ] && inject EE_SHOPIFY_API_VERSION "$SHOPIFY_API_VERSION"
+# An env var overrides the value committed in index.html; an unset var leaves the
+# committed default in place. Requiring the vars outright blocked deploys even
+# though the committed domain/token are the real production values. What matters
+# is not where the value came from but whether the baked result works, so the
+# verification below is the actual gate.
+inject_or_keep() { # $1 = JS const name, $2 = env var name
+  local name="$1" var="$2" value="${!2:-}"
+  if [ -n "$value" ]; then
+    inject "$name" "$value"
+  else
+    echo "    ${name} <- committed default (${var} unset)"
+  fi
+}
+
+inject_or_keep EE_SHOPIFY_DOMAIN      SHOPIFY_STORE_DOMAIN
+inject_or_keep EE_SHOPIFY_TOKEN       SHOPIFY_STOREFRONT_TOKEN
+inject_or_keep EE_SHOPIFY_API_VERSION SHOPIFY_API_VERSION
 if [ -n "${EE_GA_ID:-}" ]; then
   inject EE_GA_ID "$EE_GA_ID"
 else
-  echo "    WARNING: EE_GA_ID unset — analytics will stay disabled" >&2
+  echo "    EE_GA_ID unset — analytics stays disabled (not an error)"
 fi
+
+echo "==> Verifying baked Shopify config"
+baked() { sed -n "s/.*const $1='\([^']*\)'.*/\1/p" "$OUT/index.html" | head -1; }
+DOMAIN=$(baked EE_SHOPIFY_DOMAIN)
+TOKEN=$(baked EE_SHOPIFY_TOKEN)
+VERSION=$(baked EE_SHOPIFY_API_VERSION)
+
+if ! printf '%s' "$DOMAIN" | grep -Eqi '^[a-z0-9][a-z0-9-]*\.myshopify\.com$'; then
+  echo "FATAL: baked store domain '${DOMAIN}' is not a *.myshopify.com domain." >&2; exit 1
+fi
+if ! printf '%s' "$TOKEN" | grep -Eqi '^[0-9a-f]{32}$'; then
+  echo "FATAL: baked Storefront token is not 32 hex characters." >&2; exit 1
+fi
+if ! printf '%s' "$VERSION" | grep -Eq '^[0-9]{4}-[0-9]{2}$'; then
+  echo "FATAL: baked Storefront API version '${VERSION}' is malformed." >&2; exit 1
+fi
+echo "    domain ${DOMAIN}, token ${#TOKEN} hex chars, API ${VERSION} — OK"
 
 echo "==> Sanity checks"
 SIZE=$(wc -c < "$OUT/index.html")

@@ -2,5 +2,11 @@
   "name": "exclusive-essence-shop",
   "version": "1.0.0",
   "private": true,
-  "description": "Exclusive Essence Hair & Beauty Emporium storefront"
+  "description": "Exclusive Essence Hair & Beauty Emporium storefront",
+  "engines": {
+    "node": "24.x"
+  },
+  "scripts": {
+    "build": "bash build.sh"
+  }
 }
