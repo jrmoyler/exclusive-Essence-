@@ -10,6 +10,7 @@ Single-page storefront for Exclusive Essence Hair & Beauty Emporium
 - `assets/` — 52 content-hashed images (jpg/png/webp)
 - `api/leads.js` — Vercel Serverless Function: entry-gate + newsletter lead capture
 - `build.sh` — stages static files into `public/`, injects env config into HTML
+- `tools/import-products.js` — regenerates the catalog from a Shopify CSV export
 - `vercel.json` — build settings (buildCommand, outputDirectory, no install)
 
 ## Deploy
@@ -47,10 +48,37 @@ Lead endpoint (read at runtime by api/leads.js, never written into the page):
 - `KLAVIYO_LIST_ID` = <list id, optional>
 
 ## Catalog
-`const PRODUCTS` in `index.html` is a snapshot of the Shopify catalog, covering
-all 675 live product handles across the 8 site categories. It is generated, not
+`const PRODUCTS` in `index.html` is a snapshot of the Shopify catalog: 679
+entries covering all 694 product handles in the export, across the 8 site
+categories. (The counts differ because 15 products are entered in Shopify
+twice — once under a slug and once under a barcode — and are merged into one
+storefront entry whose `sourceHandles` lists both.) It is generated, not
 hand-edited. Because it is a snapshot, price, stock and new products drift the
-moment Shopify changes — re-generate it after any significant catalog change.
+moment Shopify changes — re-generate it after any significant catalog change:
+
+```sh
+# Shopify admin → Products → Export → plain CSV, all products
+node tools/import-products.js ~/Downloads/products_export.csv          # dry run
+node tools/import-products.js ~/Downloads/products_export.csv --write
+```
+
+Run it against a clean `index.html`; the catalog already in the file is the
+baseline it diffs the export against. Do not commit the export itself — it
+carries a `Cost per item` column.
+
+Two fields do **not** come from the export, because the columns behind them are
+unreliable:
+
+- **Category.** Shopify's `Type` is free text typed at the register, so the
+  storefront category is curated per handle. The importer keeps whatever
+  category a handle already has in `index.html` and refuses to run if the
+  export introduces a handle it has never seen, so a new product gets placed
+  deliberately (add it to `NEW_PRODUCT_CATEGORIES` in the script) rather than
+  landing on whatever shelf a free-text type happens to suggest.
+- **Brand.** `Vendor` is the house name "Exclusive Essence" on 585 of the 694
+  products, so trusting it would collapse the brand carousel and the brand
+  filter to one label. The brand already recorded for a handle wins; a new
+  handle reads `Vendor` only when it names a real brand.
 
 ## Health checks
 - `GET /api/leads` — config probe (booleans + token prefix, no secrets)
