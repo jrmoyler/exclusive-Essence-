@@ -1022,7 +1022,7 @@ function renderHeroCarousel(){const track=$('#heroCarouselTrack');const dots=$('
 function renderDepartments(){
   const el=$('#departmentGrid');
   el.innerHTML=DEPARTMENTS.map(d=>{
-    const count=PRODUCTS.filter(p=>p.category===d.filter&&p.available).length;
+    const count=PRODUCTS.filter(p=>p.category===d.filter).length;
     const label=`Shop ${d.name} — ${count} ${count===1?'product':'products'}`;
     return `<button type="button" class="department-card" data-department="${esc(d.filter)}" data-product-handle="${esc(d.sourceHandle)}" aria-label="${esc(label)}"><div class="department-image"><span class="department-source">From our shelves</span><img loading="lazy" decoding="async" width="1000" height="1000" src="${esc(d.image)}" alt="${esc(d.sourceProduct)}" onerror="this.onerror=null;this.src='${esc(categoryFallback(d.filter))}'"></div><div class="department-copy"><div><strong>${esc(d.name)}</strong><span>${esc(d.subtitle)}</span></div><div class="department-meta"><span>${count} ${count===1?'product':'products'}</span><span class="department-arrow" aria-hidden="true">↗</span></div></div></button>`;
   }).join('');
