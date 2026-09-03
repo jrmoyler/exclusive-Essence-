@@ -11,32 +11,41 @@ if (!catalogMatch) throw new Error('Could not find the embedded product catalog.
 
 const products = new Map(JSON.parse(catalogMatch[1]).map((product) => [product.handle, product]));
 const verifiedProductAssets = new Map([
-  ['30772275856', 'assets/card-products/mielle-pom-honey-leave-in.webp'],
-  ['854102006374', 'assets/card-products/mielle-pom-honey-curl-smoothie.webp'],
-  ['854102006367', 'assets/card-products/mielle-pom-honey-coil-custard.webp'],
-  ['850070547512', 'assets/card-products/bellatique-braid-mousse.webp'],
-  ['850070547222', 'assets/card-products/bellatique-grip-glide-10oz.webp'],
-  ['850070547239', 'assets/card-products/bellatique-grip-glide-15oz.webp'],
-  ['764302290209', 'assets/card-products/sheamoisture-curl-shine-shampoo.webp'],
-  ['764302290629', 'assets/card-products/sheamoisture-curl-shine-conditioner.webp'],
-  ['764302905035', 'assets/card-products/sheamoisture-kids-curling-butter-cream.webp'],
-  ['4-season-aloe-facial-cleanser', 'assets/card-products/4-season-aloe-cleanser.webp'],
-  ['4-season-serum', 'assets/card-products/4-season-serum.webp'],
-  ['856633008865', 'assets/card-products/kaleidoscope-miracle-drop-shampoo.webp'],
-  ['856633008872', 'assets/card-products/kaleidoscope-miracle-drop-conditioner.webp'],
-  ['856633008605', 'assets/card-products/kaleidoscope-miracle-drop-extra.webp'],
-  ['850040015102', 'assets/card-products/she-is-bomb-edge-control.webp'],
-  ['860001677508', 'assets/card-products/she-is-bomb-glazee.webp'],
-  ['860289001293', 'assets/card-products/she-is-bomb-hair-wax-stick.webp'],
-  ['adore-semi-permanent-hair-color-90-lavender-4-oz', 'assets/card-products/adore-lavender-90.webp'],
-  ['adore-semi-permanent-hair-color-88-magenta-4-oz', 'assets/card-products/adore-magenta-88.webp'],
-  ['adore-semi-permanent-hair-color-117-aquamarine-4-oz', 'assets/card-products/adore-aquamarine-117.webp'],
+  ['30772275856', 'assets/card-products/mielle-pom-honey-leave-in-cutout.webp'],
+  ['854102006374', 'assets/card-products/mielle-pom-honey-curl-smoothie-cutout.webp'],
+  ['854102006367', 'assets/card-products/mielle-pom-honey-coil-custard-cutout.webp'],
+  ['850070547512', 'assets/card-products/bellatique-braid-mousse-cutout.webp'],
+  ['850070547222', 'assets/card-products/bellatique-grip-glide-10oz-cutout.webp'],
+  ['850070547239', 'assets/card-products/bellatique-grip-glide-15oz-cutout.webp'],
+  ['764302290209', 'assets/card-products/sheamoisture-curl-shine-shampoo-cutout.webp'],
+  ['764302290629', 'assets/card-products/sheamoisture-curl-shine-conditioner-cutout.webp'],
+  ['764302905035', 'assets/card-products/sheamoisture-kids-curling-butter-cream-cutout.webp'],
+  ['4-season-aloe-facial-cleanser', 'assets/card-products/4-season-aloe-cleanser-cutout.webp'],
+  ['4-season-serum', 'assets/card-products/4-season-serum-cutout.webp'],
+  ['856633008865', 'assets/card-products/kaleidoscope-miracle-drop-shampoo-cutout.webp'],
+  ['856633008872', 'assets/card-products/kaleidoscope-miracle-drop-conditioner-cutout.webp'],
+  ['856633008605', 'assets/card-products/kaleidoscope-miracle-drop-extra-cutout.webp'],
+  ['850040015102', 'assets/card-products/she-is-bomb-edge-control-cutout.webp'],
+  ['860001677508', 'assets/card-products/she-is-bomb-glazee-cutout.webp'],
+  ['860289001293', 'assets/card-products/she-is-bomb-hair-wax-stick-cutout.webp'],
+  ['adore-semi-permanent-hair-color-90-lavender-4-oz', 'assets/card-products/adore-lavender-90-cutout.webp'],
+  ['adore-semi-permanent-hair-color-88-magenta-4-oz', 'assets/card-products/adore-magenta-88-cutout.webp'],
+  ['adore-semi-permanent-hair-color-117-aquamarine-4-oz', 'assets/card-products/adore-aquamarine-117-cutout.webp'],
 ]);
 const cardPattern = /<button class="(?:collection-card|flyer-card)"[^>]*aria-label="([^"]+)"[^>]*data-filter-jump="([^"]+)"[^>]*data-product-handles="([^"]+)"[^>]*>(.*?)<\/button>/gs;
 const cards = [...html.matchAll(cardPattern)];
 const seenHandles = new Set();
+const cinematicSceneAssets = [
+  'assets/card-scenes/featured-collection-stage.webp',
+  'assets/card-scenes/current-edit-stage.webp',
+];
 
 if (cards.length !== 7) throw new Error(`Expected 7 verified homepage cards; found ${cards.length}.`);
+
+for (const sceneAsset of cinematicSceneAssets) {
+  if (!fs.existsSync(path.join(root, sceneAsset))) throw new Error(`Missing cinematic card scene ${sceneAsset}.`);
+  if (!html.includes(sceneAsset)) throw new Error(`Cinematic card scene ${sceneAsset} is not used by the homepage.`);
+}
 
 for (const [, label, encodedFilter, handlesValue, content] of cards) {
   const filter = encodedFilter.replaceAll('&amp;', '&');
@@ -70,6 +79,10 @@ for (const [, label, encodedFilter, handlesValue, content] of cards) {
     }
     if (!fs.existsSync(path.join(root, imagePath))) {
       throw new Error(`${label}: missing product image ${imagePath}.`);
+    }
+    const imageBuffer = fs.readFileSync(path.join(root, imagePath));
+    if (!imageBuffer.includes(Buffer.from('ALPH'))) {
+      throw new Error(`${label}: ${imagePath} is missing a transparent alpha layer.`);
     }
   });
 }
