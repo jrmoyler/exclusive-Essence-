@@ -82,3 +82,18 @@
   .flyer-card{min-height:420px}.flyer-copy{padding-left:22px}.flyer-title{font-size:1.72rem}
 }
 @media(prefers-reduced-motion:reduce){.collection-card,.collection-card::after,.collection-products img,.flyer-card,.flyer-products img{transition:none!important}}
+
+/* Exclusive Essence flattened high-resolution card artwork.
+   Product packaging is baked into these local WebPs from the exact Shopify
+   catalog sources. The old individual cutout layers stay in the document for
+   backwards-compatible card metadata, but never render. */
+.collection-card,.flyer-card{background-image:var(--card-art);background-position:center;background-repeat:no-repeat;background-size:cover}
+.collection-card[data-card-style="mielle"]{--card-art:url('homepage-card-art/featured-mielle.webp')}
+.collection-card[data-card-style="bellatique"]{--card-art:url('homepage-card-art/featured-bellatique.webp')}
+.collection-card[data-card-style="shea"]{--card-art:url('homepage-card-art/featured-sheamoisture.webp')}
+.collection-card[data-card-style="season"]{--card-art:url('homepage-card-art/featured-4-season.webp')}
+.flyer-card[data-card-style="wash"]{--card-art:url('homepage-card-art/edit-wash-day.webp')}
+.flyer-card[data-card-style="style"]{--card-art:url('homepage-card-art/edit-styling.webp')}
+.flyer-card[data-card-style="color"]{--card-art:url('homepage-card-art/edit-color.webp')}
+.collection-products,.flyer-products{display:none!important}
+.flyer-card::before{box-shadow:inset 0 250px 170px -145px rgba(0,0,0,.7),inset 0 0 0 1px rgba(0,0,0,.13)}

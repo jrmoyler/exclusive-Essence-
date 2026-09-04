@@ -5,14 +5,18 @@ const path = require('node:path');
 
 const root = path.resolve(__dirname, '..');
 const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
-const cardCssPath = 'assets/homepage-cards-v3.css';
+const cardCssPath = 'assets/homepage-cards-v2.css';
 if (!html.includes(cardCssPath)) throw new Error(`Homepage does not load ${cardCssPath}.`);
 const cardCss = fs.readFileSync(path.join(root, cardCssPath), 'utf8');
-const catalogMatch = html.match(/const PRODUCTS = (\[.*?\]);\nconst BRAND_LOGOS/s);
-
-if (!catalogMatch) throw new Error('Could not find the embedded product catalog.');
-
-const products = new Map(JSON.parse(catalogMatch[1]).map((product) => [product.handle, product]));
+const catalogMarker = 'const PRODUCTS = ';
+const catalogStart = html.indexOf(catalogMarker);
+const brandLogosStart = html.indexOf('const BRAND_LOGOS', catalogStart);
+const catalogEnd = html.lastIndexOf(';', brandLogosStart);
+if (catalogStart < 0 || brandLogosStart < 0 || catalogEnd < catalogStart) {
+  throw new Error('Could not find the embedded product catalog.');
+}
+const catalogJson = html.slice(catalogStart + catalogMarker.length, catalogEnd).trim();
+const products = new Map(JSON.parse(catalogJson).map((product) => [product.handle, product]));
 const cardArt = new Map([
   ['mielle', { path: 'assets/homepage-card-art/featured-mielle.webp', width: 2400, height: 1500, handles: ['30772275856', '854102006374', '854102006367'] }],
   ['bellatique', { path: 'assets/homepage-card-art/featured-bellatique.webp', width: 2400, height: 1500, handles: ['850070547512', '850070547222', '850070547239'] }],
@@ -49,9 +53,33 @@ const cards = [...html.matchAll(cardPattern)];
 const seenHandles = new Set();
 
 if (cards.length !== 7) throw new Error(`Expected 7 verified homepage cards; found ${cards.length}.`);
-if (!cardCss.includes('.homepage-card-art')) throw new Error('Missing flattened card-art styling.');
-if (html.includes('src="assets/card-products/') || html.includes('<span class="collection-products') || html.includes('<span class="flyer-products')) {
-  throw new Error('Homepage still references the superseded layered product-cutout system.');
+if (!cardCss.includes('Exclusive Essence flattened high-resolution card artwork')) {
+  throw new Error('Missing flattened card-art styling.');
+}
+if (!cardCss.includes('.collection-products,.flyer-products{display:none!important}')) {
+  throw new Error('Superseded product-cutout layers are not disabled.');
+}
+
+function webpDimensions(buffer) {
+  if (buffer.subarray(0, 4).toString() !== 'RIFF' || buffer.subarray(8, 12).toString() !== 'WEBP') return null;
+  let offset = 12;
+  while (offset + 8 <= buffer.length) {
+    const type = buffer.subarray(offset, offset + 4).toString();
+    const size = buffer.readUInt32LE(offset + 4);
+    const data = offset + 8;
+    if (type === 'VP8 ' && data + 10 <= buffer.length && buffer[data + 3] === 0x9d && buffer[data + 4] === 0x01 && buffer[data + 5] === 0x2a) {
+      return { width: buffer.readUInt16LE(data + 6) & 0x3fff, height: buffer.readUInt16LE(data + 8) & 0x3fff };
+    }
+    if (type === 'VP8L' && data + 5 <= buffer.length && buffer[data] === 0x2f) {
+      const bits = buffer.readUInt32LE(data + 1);
+      return { width: (bits & 0x3fff) + 1, height: ((bits >>> 14) & 0x3fff) + 1 };
+    }
+    if (type === 'VP8X' && data + 10 <= buffer.length) {
+      return { width: buffer.readUIntLE(data + 4, 3) + 1, height: buffer.readUIntLE(data + 7, 3) + 1 };
+    }
+    offset = data + size + (size % 2);
+  }
+  return null;
 }
 
 for (const [, label, encodedFilter, handlesValue, cardStyle, content] of cards) {
@@ -60,15 +88,15 @@ for (const [, label, encodedFilter, handlesValue, cardStyle, content] of cards) 
   const expected = cardArt.get(cardStyle);
   if (!expected) throw new Error(`${label}: unknown card style ${cardStyle}.`);
   if (handles.join(',') !== expected.handles.join(',')) throw new Error(`${label}: product handles do not match the verified ${cardStyle} composition.`);
-  const imageMatch = content.match(/<img class="homepage-card-art" src="([^"]+)" alt="" width="(\d+)" height="(\d+)"/);
-  if (!imageMatch) throw new Error(`${label}: missing flattened local card artwork.`);
-  const [, imagePath, width, height] = imageMatch;
-  if (imagePath !== expected.path || Number(width) !== expected.width || Number(height) !== expected.height) {
-    throw new Error(`${label}: expected ${expected.path} at ${expected.width}x${expected.height}.`);
+  const cssPath = expected.path.replace(/^assets\//, '');
+  const cssBinding = `[data-card-style="${cardStyle}"]{--card-art:url('${cssPath}')}`;
+  if (!cardCss.includes(cssBinding)) {
+    throw new Error(`${label}: ${expected.path} is not hard-embedded in the card stylesheet.`);
   }
-  const imageBuffer = fs.readFileSync(path.join(root, imagePath));
-  if (imageBuffer.length < 75_000 || imageBuffer.subarray(0, 4).toString() !== 'RIFF' || imageBuffer.subarray(8, 12).toString() !== 'WEBP') {
-    throw new Error(`${label}: ${imagePath} is not a valid high-resolution WebP card asset.`);
+  const imageBuffer = fs.readFileSync(path.join(root, expected.path));
+  const dimensions = webpDimensions(imageBuffer);
+  if (imageBuffer.length < 75_000 || !dimensions || dimensions.width !== expected.width || dimensions.height !== expected.height) {
+    throw new Error(`${label}: ${expected.path} is not a valid ${expected.width}x${expected.height} high-resolution WebP card asset.`);
   }
   if (!label.trim()) throw new Error('A homepage card is missing its accessible label.');
 
