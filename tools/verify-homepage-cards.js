@@ -5,9 +5,9 @@ const path = require('node:path');
 
 const root = path.resolve(__dirname, '..');
 const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
-const cardCssPath = 'assets/homepage-cards-v2.css';
-const cardCssLink = html.match(/<link rel="stylesheet" href="(assets\/homepage-cards-v2\.css\?v=[a-z0-9-]+)">/i);
-if (!cardCssLink) throw new Error(`Homepage must load ${cardCssPath} through a versioned URL so immutable browser caches cannot serve obsolete card art.`);
+const cardCssLink = html.match(/<link rel="stylesheet" href="(assets\/(homepage-cards-v(?:[3-9]|[1-9]\d+)\.css))">/i);
+if (!cardCssLink) throw new Error('Homepage must load a new, immutable-cache-safe card stylesheet (v3 or newer).');
+const cardCssPath = cardCssLink[1];
 const cardCss = fs.readFileSync(path.join(root, cardCssPath), 'utf8');
 const catalogMarker = 'const PRODUCTS = ';
 const catalogStart = html.indexOf(catalogMarker);
@@ -19,13 +19,13 @@ if (catalogStart < 0 || brandLogosStart < 0 || catalogEnd < catalogStart) {
 const catalogJson = html.slice(catalogStart + catalogMarker.length, catalogEnd).trim();
 const products = new Map(JSON.parse(catalogJson).map((product) => [product.handle, product]));
 const cardArt = new Map([
-  ['mielle', { path: 'assets/homepage-card-art/featured-mielle.webp', width: 2400, height: 1500, handles: ['30772275856', '854102006374', '854102006367'] }],
-  ['bellatique', { path: 'assets/homepage-card-art/featured-bellatique.webp', width: 2400, height: 1500, handles: ['850070547512', '850070547222', '850070547239'] }],
-  ['shea', { path: 'assets/homepage-card-art/featured-sheamoisture.webp', width: 2400, height: 1500, handles: ['764302290209', '764302290629', '764302905035'] }],
-  ['season', { path: 'assets/homepage-card-art/featured-4-season.webp', width: 2400, height: 1500, handles: ['4-season-aloe-facial-cleanser', '4-season-serum'] }],
-  ['wash', { path: 'assets/homepage-card-art/edit-wash-day.webp', width: 1600, height: 2000, handles: ['856633008865', '856633008872', '856633008605'] }],
-  ['style', { path: 'assets/homepage-card-art/edit-styling.webp', width: 1600, height: 2000, handles: ['850040015102', '860001677508', '860289001293'] }],
-  ['color', { path: 'assets/homepage-card-art/edit-color.webp', width: 1600, height: 2000, handles: ['adore-semi-permanent-hair-color-90-lavender-4-oz', 'adore-semi-permanent-hair-color-88-magenta-4-oz', 'adore-semi-permanent-hair-color-117-aquamarine-4-oz'] }],
+  ['mielle', { path: 'assets/homepage-card-art/v4/featured-mielle.webp', width: 2400, height: 1500, handles: ['30772275856', '854102006374', '854102006367'] }],
+  ['bellatique', { path: 'assets/homepage-card-art/v4/featured-bellatique.webp', width: 2400, height: 1500, handles: ['850070547512', '850070547222', '850070547239'] }],
+  ['shea', { path: 'assets/homepage-card-art/v4/featured-sheamoisture.webp', width: 2400, height: 1500, handles: ['764302290209', '764302290629', '764302905035'] }],
+  ['season', { path: 'assets/homepage-card-art/v4/featured-4-season.webp', width: 2400, height: 1500, handles: ['4-season-aloe-facial-cleanser', '4-season-serum'] }],
+  ['wash', { path: 'assets/homepage-card-art/v4/edit-wash-day.webp', width: 1600, height: 2000, handles: ['856633008865', '856633008872', '856633008605'] }],
+  ['style', { path: 'assets/homepage-card-art/v4/edit-styling.webp', width: 1600, height: 2000, handles: ['850040015102', '860001677508', '860289001293'] }],
+  ['color', { path: 'assets/homepage-card-art/v4/edit-color.webp', width: 1600, height: 2000, handles: ['adore-semi-permanent-hair-color-90-lavender-4-oz', 'adore-semi-permanent-hair-color-88-magenta-4-oz', 'adore-semi-permanent-hair-color-117-aquamarine-4-oz'] }],
 ]);
 const verifiedCatalogSources = new Map([
   ['30772275856', 'https://cdn.shopify.com/s/files/1/0716/1390/7027/files/mielle_leavein.png?v=1787235149'],
@@ -54,11 +54,14 @@ const cards = [...html.matchAll(cardPattern)];
 const seenHandles = new Set();
 
 if (cards.length !== 7) throw new Error(`Expected 7 verified homepage cards; found ${cards.length}.`);
-if (!cardCss.includes('Exclusive Essence flattened high-resolution card artwork')) {
-  throw new Error('Missing flattened card-art styling.');
+if (!cardCss.includes('Exclusive Essence unified campaign photography')) {
+  throw new Error('Missing unified campaign-photography styling.');
 }
 if (!cardCss.includes('.collection-products,.flyer-products{display:none!important}')) {
   throw new Error('Superseded product-cutout layers are not disabled.');
+}
+if (/class="(?:collection-products|flyer-products)"/.test(html)) {
+  throw new Error('Homepage cards must not request legacy cutout product layers; the products belong inside each unified campaign photograph.');
 }
 
 function webpDimensions(buffer) {
@@ -90,9 +93,9 @@ for (const [, label, encodedFilter, handlesValue, cardStyle, content] of cards) 
   if (!expected) throw new Error(`${label}: unknown card style ${cardStyle}.`);
   if (handles.join(',') !== expected.handles.join(',')) throw new Error(`${label}: product handles do not match the verified ${cardStyle} composition.`);
   const cssPath = expected.path.replace(/^assets\//, '');
-  const cssBinding = `[data-card-style="${cardStyle}"]{--card-art:url('${cssPath}')}`;
+  const cssBinding = `[data-card-style="${cardStyle}"]{--card-art:url('${cssPath}')!important}`;
   if (!cardCss.includes(cssBinding)) {
-    throw new Error(`${label}: ${expected.path} is not hard-embedded in the card stylesheet.`);
+    throw new Error(`${label}: ${expected.path} is not hard-embedded with immutable precedence in the card stylesheet.`);
   }
   const imageBuffer = fs.readFileSync(path.join(root, expected.path));
   const dimensions = webpDimensions(imageBuffer);
@@ -119,4 +122,4 @@ if (seenHandles.size !== verifiedCatalogSources.size) {
   throw new Error(`Expected ${verifiedCatalogSources.size} unique verified product placements; found ${seenHandles.size}.`);
 }
 
-console.log(`Verified ${cards.length} flattened high-resolution homepage cards and ${seenHandles.size} exact catalog-product placements.`);
+console.log(`Verified ${cards.length} unified high-resolution homepage campaigns and ${seenHandles.size} exact catalog-product placements.`);

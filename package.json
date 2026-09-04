@@ -8,6 +8,10 @@
   },
   "scripts": {
     "build": "bash build.sh",
+    "dev": "vite",
     "verify:cards": "node tools/verify-homepage-cards.js"
+  },
+  "devDependencies": {
+    "vite": "^8.2.2"
   }
 }
