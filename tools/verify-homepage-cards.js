@@ -5,6 +5,9 @@ const path = require('node:path');
 
 const root = path.resolve(__dirname, '..');
 const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
+const cardCssPath = 'assets/homepage-cards-v2.css';
+if (!html.includes(cardCssPath)) throw new Error(`Homepage does not load ${cardCssPath}.`);
+const cardCss = fs.readFileSync(path.join(root, cardCssPath), 'utf8');
 const catalogMatch = html.match(/const PRODUCTS = (\[.*?\]);\nconst BRAND_LOGOS/s);
 
 if (!catalogMatch) throw new Error('Could not find the embedded product catalog.');
@@ -35,16 +38,26 @@ const verifiedProductAssets = new Map([
 const cardPattern = /<button class="(?:collection-card|flyer-card)"[^>]*aria-label="([^"]+)"[^>]*data-filter-jump="([^"]+)"[^>]*data-product-handles="([^"]+)"[^>]*>(.*?)<\/button>/gs;
 const cards = [...html.matchAll(cardPattern)];
 const seenHandles = new Set();
-const cinematicSceneAssets = [
-  'assets/card-scenes/featured-collection-stage.webp',
-  'assets/card-scenes/current-edit-stage.webp',
-];
+const cinematicSceneAssets = new Map([
+  ['mielle', 'assets/card-scenes/v2/featured-mielle.webp'],
+  ['bellatique', 'assets/card-scenes/v2/featured-bellatique.webp'],
+  ['shea', 'assets/card-scenes/v2/featured-sheamoisture.webp'],
+  ['season', 'assets/card-scenes/v2/featured-4-season.webp'],
+  ['wash', 'assets/card-scenes/v2/edit-wash-day.webp'],
+  ['style', 'assets/card-scenes/v2/edit-styling.webp'],
+  ['color', 'assets/card-scenes/v2/edit-color.webp'],
+]);
 
 if (cards.length !== 7) throw new Error(`Expected 7 verified homepage cards; found ${cards.length}.`);
 
-for (const sceneAsset of cinematicSceneAssets) {
+for (const [cardStyle, sceneAsset] of cinematicSceneAssets) {
   if (!fs.existsSync(path.join(root, sceneAsset))) throw new Error(`Missing cinematic card scene ${sceneAsset}.`);
-  if (!html.includes(sceneAsset)) throw new Error(`Cinematic card scene ${sceneAsset} is not used by the homepage.`);
+  if (!cardCss.includes(sceneAsset.replace('assets/', ''))) {
+    throw new Error(`Cinematic card scene ${sceneAsset} is not used by the homepage card stylesheet.`);
+  }
+  if (!cardCss.includes(`[data-card-style="${cardStyle}"]`)) {
+    throw new Error(`Missing card-scene styling hook for ${cardStyle}.`);
+  }
 }
 
 for (const [, label, encodedFilter, handlesValue, content] of cards) {
