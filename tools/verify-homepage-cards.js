@@ -8,100 +8,114 @@ const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
 const cardCssPath = 'assets/homepage-cards-v2.css';
 if (!html.includes(cardCssPath)) throw new Error(`Homepage does not load ${cardCssPath}.`);
 const cardCss = fs.readFileSync(path.join(root, cardCssPath), 'utf8');
-const catalogMatch = html.match(/const PRODUCTS = (\[.*?\]);\nconst BRAND_LOGOS/s);
-
-if (!catalogMatch) throw new Error('Could not find the embedded product catalog.');
-
-const products = new Map(JSON.parse(catalogMatch[1]).map((product) => [product.handle, product]));
-const verifiedProductAssets = new Map([
-  ['30772275856', 'assets/card-products/mielle-pom-honey-leave-in-cutout.webp'],
-  ['854102006374', 'assets/card-products/mielle-pom-honey-curl-smoothie-cutout.webp'],
-  ['854102006367', 'assets/card-products/mielle-pom-honey-coil-custard-cutout.webp'],
-  ['850070547512', 'assets/card-products/bellatique-braid-mousse-cutout.webp'],
-  ['850070547222', 'assets/card-products/bellatique-grip-glide-10oz-cutout.webp'],
-  ['850070547239', 'assets/card-products/bellatique-grip-glide-15oz-cutout.webp'],
-  ['764302290209', 'assets/card-products/sheamoisture-curl-shine-shampoo-cutout.webp'],
-  ['764302290629', 'assets/card-products/sheamoisture-curl-shine-conditioner-cutout.webp'],
-  ['764302905035', 'assets/card-products/sheamoisture-kids-curling-butter-cream-cutout.webp'],
-  ['4-season-aloe-facial-cleanser', 'assets/card-products/4-season-aloe-cleanser-cutout.webp'],
-  ['4-season-serum', 'assets/card-products/4-season-serum-cutout.webp'],
-  ['856633008865', 'assets/card-products/kaleidoscope-miracle-drop-shampoo-cutout.webp'],
-  ['856633008872', 'assets/card-products/kaleidoscope-miracle-drop-conditioner-cutout.webp'],
-  ['856633008605', 'assets/card-products/kaleidoscope-miracle-drop-extra-cutout.webp'],
-  ['850040015102', 'assets/card-products/she-is-bomb-edge-control-cutout.webp'],
-  ['860001677508', 'assets/card-products/she-is-bomb-glazee-cutout.webp'],
-  ['860289001293', 'assets/card-products/she-is-bomb-hair-wax-stick-cutout.webp'],
-  ['adore-semi-permanent-hair-color-90-lavender-4-oz', 'assets/card-products/adore-lavender-90-cutout.webp'],
-  ['adore-semi-permanent-hair-color-88-magenta-4-oz', 'assets/card-products/adore-magenta-88-cutout.webp'],
-  ['adore-semi-permanent-hair-color-117-aquamarine-4-oz', 'assets/card-products/adore-aquamarine-117-cutout.webp'],
+const catalogMarker = 'const PRODUCTS = ';
+const catalogStart = html.indexOf(catalogMarker);
+const brandLogosStart = html.indexOf('const BRAND_LOGOS', catalogStart);
+const catalogEnd = html.lastIndexOf(';', brandLogosStart);
+if (catalogStart < 0 || brandLogosStart < 0 || catalogEnd < catalogStart) {
+  throw new Error('Could not find the embedded product catalog.');
+}
+const catalogJson = html.slice(catalogStart + catalogMarker.length, catalogEnd).trim();
+const products = new Map(JSON.parse(catalogJson).map((product) => [product.handle, product]));
+const cardArt = new Map([
+  ['mielle', { path: 'assets/homepage-card-art/featured-mielle.webp', width: 2400, height: 1500, handles: ['30772275856', '854102006374', '854102006367'] }],
+  ['bellatique', { path: 'assets/homepage-card-art/featured-bellatique.webp', width: 2400, height: 1500, handles: ['850070547512', '850070547222', '850070547239'] }],
+  ['shea', { path: 'assets/homepage-card-art/featured-sheamoisture.webp', width: 2400, height: 1500, handles: ['764302290209', '764302290629', '764302905035'] }],
+  ['season', { path: 'assets/homepage-card-art/featured-4-season.webp', width: 2400, height: 1500, handles: ['4-season-aloe-facial-cleanser', '4-season-serum'] }],
+  ['wash', { path: 'assets/homepage-card-art/edit-wash-day.webp', width: 1600, height: 2000, handles: ['856633008865', '856633008872', '856633008605'] }],
+  ['style', { path: 'assets/homepage-card-art/edit-styling.webp', width: 1600, height: 2000, handles: ['850040015102', '860001677508', '860289001293'] }],
+  ['color', { path: 'assets/homepage-card-art/edit-color.webp', width: 1600, height: 2000, handles: ['adore-semi-permanent-hair-color-90-lavender-4-oz', 'adore-semi-permanent-hair-color-88-magenta-4-oz', 'adore-semi-permanent-hair-color-117-aquamarine-4-oz'] }],
 ]);
-const cardPattern = /<button class="(?:collection-card|flyer-card)"[^>]*aria-label="([^"]+)"[^>]*data-filter-jump="([^"]+)"[^>]*data-product-handles="([^"]+)"[^>]*>(.*?)<\/button>/gs;
+const verifiedCatalogSources = new Map([
+  ['30772275856', 'https://cdn.shopify.com/s/files/1/0716/1390/7027/files/mielle_leavein.png?v=1787235149'],
+  ['854102006374', 'https://cdn.shopify.com/s/files/1/0716/1390/7027/files/mielle_smoothie.png?v=1787235149'],
+  ['854102006367', 'https://cdn.shopify.com/s/files/1/0716/1390/7027/files/mielle_custard.png?v=1787235149'],
+  ['850070547512', 'https://cdn.shopify.com/s/files/1/0716/1390/7027/files/bellatique-braid-mousse-8oz.png?v=1787218811'],
+  ['850070547222', 'https://cdn.shopify.com/s/files/1/0716/1390/7027/files/bellatique-grip-glide-10oz.png?v=1787218811'],
+  ['850070547239', 'https://cdn.shopify.com/s/files/1/0716/1390/7027/files/bellatique-grip-glide-15oz.png?v=1787218811'],
+  ['764302290209', 'https://cdn.shopify.com/s/files/1/0716/1390/7027/files/sheamoisture-curl-shine-shampoo.png?v=1787224859'],
+  ['764302290629', 'https://cdn.shopify.com/s/files/1/0716/1390/7027/files/sheamoisture-curl-shine-conditioner.png?v=1787224859'],
+  ['764302905035', 'https://cdn.shopify.com/s/files/1/0716/1390/7027/files/sheamoisture-kids-curling-butter-cream.png?v=1787224860'],
+  ['4-season-aloe-facial-cleanser', 'https://cdn.shopify.com/s/files/1/0716/1390/7027/files/4SeasonskinAloe.png?v=1787422680'],
+  ['4-season-serum', 'https://cdn.shopify.com/s/files/1/0716/1390/7027/files/4SeasonskinSerum.png?v=1787423471'],
+  ['856633008865', 'https://cdn.shopify.com/s/files/1/0716/1390/7027/files/kal_shampoo.png?v=1787235148'],
+  ['856633008872', 'https://cdn.shopify.com/s/files/1/0716/1390/7027/files/kal_conditioner.png?v=1787235148'],
+  ['856633008605', 'https://cdn.shopify.com/s/files/1/0716/1390/7027/files/kal_extra.png?v=1787235148'],
+  ['850040015102', 'https://cdn.shopify.com/s/files/1/0716/1390/7027/files/sib_edge1.png?v=1787235172'],
+  ['860001677508', 'https://cdn.shopify.com/s/files/1/0716/1390/7027/files/sib_glazee.png?v=1787235173'],
+  ['860289001293', 'https://cdn.shopify.com/s/files/1/0716/1390/7027/files/sib_waxstick.png?v=1787235172'],
+  ['adore-semi-permanent-hair-color-90-lavender-4-oz', 'https://cdn.shopify.com/s/files/1/0716/1390/7027/files/adore-90-lavender.jpg?v=1787310275'],
+  ['adore-semi-permanent-hair-color-88-magenta-4-oz', 'https://cdn.shopify.com/s/files/1/0716/1390/7027/files/adore-88-magenta.jpg?v=1787310275'],
+  ['adore-semi-permanent-hair-color-117-aquamarine-4-oz', 'https://cdn.shopify.com/s/files/1/0716/1390/7027/files/adore-117-aquamarine.jpg?v=1787309396'],
+]);
+const cardPattern = /<button class="(?:collection-card|flyer-card)"[^>]*aria-label="([^"]+)"[^>]*data-filter-jump="([^"]+)"[^>]*data-product-handles="([^"]+)"[^>]*data-card-style="([^"]+)"[^>]*>(.*?)<\/button>/gs;
 const cards = [...html.matchAll(cardPattern)];
 const seenHandles = new Set();
-const cinematicSceneAssets = new Map([
-  ['mielle', 'assets/card-scenes/v2/featured-mielle.webp'],
-  ['bellatique', 'assets/card-scenes/v2/featured-bellatique.webp'],
-  ['shea', 'assets/card-scenes/v2/featured-sheamoisture.webp'],
-  ['season', 'assets/card-scenes/v2/featured-4-season.webp'],
-  ['wash', 'assets/card-scenes/v2/edit-wash-day.webp'],
-  ['style', 'assets/card-scenes/v2/edit-styling.webp'],
-  ['color', 'assets/card-scenes/v2/edit-color.webp'],
-]);
 
 if (cards.length !== 7) throw new Error(`Expected 7 verified homepage cards; found ${cards.length}.`);
-
-for (const [cardStyle, sceneAsset] of cinematicSceneAssets) {
-  if (!fs.existsSync(path.join(root, sceneAsset))) throw new Error(`Missing cinematic card scene ${sceneAsset}.`);
-  if (!cardCss.includes(sceneAsset.replace('assets/', ''))) {
-    throw new Error(`Cinematic card scene ${sceneAsset} is not used by the homepage card stylesheet.`);
-  }
-  if (!cardCss.includes(`[data-card-style="${cardStyle}"]`)) {
-    throw new Error(`Missing card-scene styling hook for ${cardStyle}.`);
-  }
+if (!cardCss.includes('Exclusive Essence flattened high-resolution card artwork')) {
+  throw new Error('Missing flattened card-art styling.');
+}
+if (!cardCss.includes('.collection-products,.flyer-products{display:none!important}')) {
+  throw new Error('Superseded product-cutout layers are not disabled.');
 }
 
-for (const [, label, encodedFilter, handlesValue, content] of cards) {
+function webpDimensions(buffer) {
+  if (buffer.subarray(0, 4).toString() !== 'RIFF' || buffer.subarray(8, 12).toString() !== 'WEBP') return null;
+  let offset = 12;
+  while (offset + 8 <= buffer.length) {
+    const type = buffer.subarray(offset, offset + 4).toString();
+    const size = buffer.readUInt32LE(offset + 4);
+    const data = offset + 8;
+    if (type === 'VP8 ' && data + 10 <= buffer.length && buffer[data + 3] === 0x9d && buffer[data + 4] === 0x01 && buffer[data + 5] === 0x2a) {
+      return { width: buffer.readUInt16LE(data + 6) & 0x3fff, height: buffer.readUInt16LE(data + 8) & 0x3fff };
+    }
+    if (type === 'VP8L' && data + 5 <= buffer.length && buffer[data] === 0x2f) {
+      const bits = buffer.readUInt32LE(data + 1);
+      return { width: (bits & 0x3fff) + 1, height: ((bits >>> 14) & 0x3fff) + 1 };
+    }
+    if (type === 'VP8X' && data + 10 <= buffer.length) {
+      return { width: buffer.readUIntLE(data + 4, 3) + 1, height: buffer.readUIntLE(data + 7, 3) + 1 };
+    }
+    offset = data + size + (size % 2);
+  }
+  return null;
+}
+
+for (const [, label, encodedFilter, handlesValue, cardStyle, content] of cards) {
   const filter = encodedFilter.replaceAll('&amp;', '&');
   const handles = handlesValue.split(',');
-  const imagePaths = [...content.matchAll(/<img src="([^"]+)"/g)].map((match) => match[1]);
-
-  if (!label.trim()) throw new Error('A homepage card is missing its accessible label.');
-  if (imagePaths.length !== handles.length) {
-    throw new Error(`${label}: ${handles.length} products but ${imagePaths.length} product images.`);
+  const expected = cardArt.get(cardStyle);
+  if (!expected) throw new Error(`${label}: unknown card style ${cardStyle}.`);
+  if (handles.join(',') !== expected.handles.join(',')) throw new Error(`${label}: product handles do not match the verified ${cardStyle} composition.`);
+  const cssPath = expected.path.replace(/^assets\//, '');
+  const cssBinding = `[data-card-style="${cardStyle}"]{--card-art:url('${cssPath}')}`;
+  if (!cardCss.includes(cssBinding)) {
+    throw new Error(`${label}: ${expected.path} is not hard-embedded in the card stylesheet.`);
   }
+  const imageBuffer = fs.readFileSync(path.join(root, expected.path));
+  const dimensions = webpDimensions(imageBuffer);
+  if (imageBuffer.length < 75_000 || !dimensions || dimensions.width !== expected.width || dimensions.height !== expected.height) {
+    throw new Error(`${label}: ${expected.path} is not a valid ${expected.width}x${expected.height} high-resolution WebP card asset.`);
+  }
+  if (!label.trim()) throw new Error('A homepage card is missing its accessible label.');
 
-  handles.forEach((handle, index) => {
+  handles.forEach((handle) => {
     const product = products.get(handle);
     if (!product) throw new Error(`${label}: catalog handle ${handle} does not exist.`);
     if (seenHandles.has(handle)) throw new Error(`${label}: catalog handle ${handle} appears on more than one homepage card.`);
     seenHandles.add(handle);
-    if (!product.available || product.inventory < 1) {
-      throw new Error(`${label}: ${product.title} is not currently available.`);
-    }
-    if (product.category !== filter) {
-      throw new Error(`${label}: ${product.title} belongs to ${product.category}, not ${filter}.`);
-    }
-
-    const imagePath = imagePaths[index];
-    const verifiedAsset = verifiedProductAssets.get(handle);
-    if (imagePath !== verifiedAsset) {
-      throw new Error(`${label}: ${product.title} must use its verified asset ${verifiedAsset}, not ${imagePath}.`);
-    }
-    if (!imagePath.startsWith('assets/card-products/')) {
-      throw new Error(`${label}: ${imagePath} is not a local verified card-product asset.`);
-    }
-    if (!fs.existsSync(path.join(root, imagePath))) {
-      throw new Error(`${label}: missing product image ${imagePath}.`);
-    }
-    const imageBuffer = fs.readFileSync(path.join(root, imagePath));
-    if (!imageBuffer.includes(Buffer.from('ALPH'))) {
-      throw new Error(`${label}: ${imagePath} is missing a transparent alpha layer.`);
+    if (!product.available || product.inventory < 1) throw new Error(`${label}: ${product.title} is not currently available.`);
+    if (product.category !== filter) throw new Error(`${label}: ${product.title} belongs to ${product.category}, not ${filter}.`);
+    const verifiedSource = verifiedCatalogSources.get(handle);
+    if (!verifiedSource || !(product.images || [product.image]).includes(verifiedSource)) {
+      throw new Error(`${label}: ${product.title} no longer matches its verified Shopify catalog source.`);
     }
   });
 }
 
-if (seenHandles.size !== verifiedProductAssets.size) {
-  throw new Error(`Expected ${verifiedProductAssets.size} unique verified product placements; found ${seenHandles.size}.`);
+if (seenHandles.size !== verifiedCatalogSources.size) {
+  throw new Error(`Expected ${verifiedCatalogSources.size} unique verified product placements; found ${seenHandles.size}.`);
 }
 
-console.log(`Verified ${cards.length} homepage cards and ${cards.reduce((total, card) => total + card[3].split(',').length, 0)} catalog-product placements.`);
+console.log(`Verified ${cards.length} flattened high-resolution homepage cards and ${seenHandles.size} exact catalog-product placements.`);
