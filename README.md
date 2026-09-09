@@ -7,7 +7,7 @@ Single-page storefront for Exclusive Essence Hair & Beauty Emporium
 
 ## Layout
 - `index.html` — the whole site (all markup, CSS, JS in one file)
-- `assets/` — 52 content-hashed images (jpg/png/webp)
+- `assets/` — 56 images (jpg/png/webp), mostly content-hashed
 - `api/leads.js` — Vercel Serverless Function: entry-gate + newsletter lead capture
 - `build.sh` — stages static files into `public/`, injects env config into HTML
 - `tools/import-products.js` — regenerates the catalog from a Shopify CSV export
