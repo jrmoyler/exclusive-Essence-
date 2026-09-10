@@ -62,6 +62,7 @@ if [ -n "${EE_GA_ID:-}" ]; then
 else
   echo "    EE_GA_ID unset — analytics stays disabled (not an error)"
 fi
+inject_or_keep EE_META_PIXEL_ID META_PIXEL_ID
 
 echo "==> Verifying baked Shopify config"
 baked() { sed -n "s/.*const $1='\([^']*\)'.*/\1/p" "$OUT/index.html" | head -1; }
