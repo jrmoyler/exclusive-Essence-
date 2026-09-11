@@ -48,8 +48,8 @@ Lead endpoint (read at runtime by api/leads.js, never written into the page):
 - `KLAVIYO_LIST_ID` = <list id, optional>
 
 ## Catalog
-`const PRODUCTS` in `index.html` is a snapshot of the Shopify catalog: 679
-entries covering all 694 product handles in the export, across the 8 site
+`const PRODUCTS` in `index.html` is a snapshot of the Shopify catalog: 687
+entries covering all 702 product handles in the export, across the 8 site
 categories. (The counts differ because 15 products are entered in Shopify
 twice — once under a slug and once under a barcode — and are merged into one
 storefront entry whose `sourceHandles` lists both.) It is generated, not
@@ -65,6 +65,17 @@ node tools/import-products.js ~/Downloads/products_export.csv --write
 Run it against a clean `index.html`; the catalog already in the file is the
 baseline it diffs the export against. Do not commit the export itself — it
 carries a `Cost per item` column.
+
+Shopify will also export a subset — one collection, or only the rows edited
+that day. By default a product the export omits is a product that has left the
+store and it is dropped, so feeding a subset in would wipe everything it does
+not list. Pass `--merge` for those: products the export lists are refreshed in
+place, products it does not mention are left exactly as they are, and new
+handles are added at the front as new arrivals.
+
+```sh
+node tools/import-products.js ~/Downloads/products_export-2.csv --merge --write
+```
 
 Two fields do **not** come from the export, because the columns behind them are
 unreliable:
