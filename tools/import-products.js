@@ -2,7 +2,7 @@
 /*
  * Regenerate `const PRODUCTS` in index.html from a Shopify products CSV export.
  *
- *   node tools/import-products.js path/to/products_export.csv [--write]
+ *   node tools/import-products.js path/to/products_export.csv [--merge] [--write]
  *
  * Without --write it prints a summary of what would change and leaves the file
  * alone. The export itself is never committed: it carries `Cost per item`,
@@ -11,6 +11,14 @@
  * Run it against a clean index.html: the catalog already in the file is the
  * baseline it diffs the export against, so a second --write over its own
  * output sees no new products and clears the New badges.
+ *
+ * By default the export is the whole catalog, so a product the export omits is
+ * a product that has left the store and it is dropped. Shopify also exports a
+ * subset -- one collection, or the rows edited that day -- and feeding one of
+ * those in by default would wipe every product it does not happen to list.
+ * `--merge` is the mode for those: products the export lists are refreshed in
+ * place, products it does not mention are left exactly as they are, and new
+ * handles are added at the front as new arrivals.
  *
  * The catalog is a snapshot, so re-run this after any significant Shopify
  * change (see README "Catalog").
@@ -78,6 +86,19 @@ const NEW_PRODUCT_CATEGORIES = {
   // In-store raffle entry: unpublished in Shopify, no image, no department it
   // belongs to. Files with the other odds and ends.
   'raffle-for-prodcts': 'Tools & Accessories',
+  // Wigs from the 2026-09-10 export. Shopify files the Amore Mio under type
+  // "Wig Cap"; it is a lace front wig and belongs on the wig wall.
+  'amore-mio-lace-front-wig': 'Braids, Wigs & Crochet',
+  'motown-lace-front-wig': 'Braids, Wigs & Crochet',
+  '100-human-hair-wig-blond-26': 'Braids, Wigs & Crochet',
+  '100-360-human-hair-wig-black-26': 'Braids, Wigs & Crochet',
+  // Weave sold by the bundle, not a finished wig
+  'lord-cliff-glue-tip-100-remy-human-hair-extension-weave': 'Human Hair',
+  // 4 Season, split between the two shelves the line sits on
+  '4-season-hair-treatment-oil': 'Hair Care',
+  '4-season-body-scrub': 'Skin & Body',
+  // Press-on nails
+  'beautiful-nail-press-on-set-pink-leopard-print-with-rhinestone-stars-pearl-hearts': 'Beauty & Fashion',
 };
 
 /* ---------- CSV ---------- */
@@ -212,6 +233,9 @@ function build(csvPath) {
       images,
       variants: variants.length ? variants : ['Default'],
       swatches: colors.length ? colors : DEFAULT_SWATCHES.slice(),
+      // Whether the colour metafield was filled in at all, which the fallback
+      // palette hides. --merge needs it to tell "no colour" from "no answer".
+      hasColors: colors.length > 0,
       description: plainText(get(head, 'Body (HTML)')),
       skus,
       inventory: Math.max(0, inventory),
@@ -225,6 +249,10 @@ function build(csvPath) {
     if (seen) {
       seen.sourceHandles.push(handle);
       seen.inventory += entry.inventory;
+      // The losing handle's own title, price and size are kept alongside the
+      // merged entry: --merge needs them to re-align the entry onto whichever
+      // of the two handles the catalog already settled on.
+      seen.duplicates.push(entry);
       entry.images.forEach(src => { if (!seen.images.includes(src)) seen.images.push(src); });
       entry.skus.forEach(s => { if (!seen.skus.includes(s)) seen.skus.push(s); });
       if (!seen.image) seen.image = seen.images[0] || '';
@@ -232,6 +260,7 @@ function build(csvPath) {
       if (seen.price <= 0 && entry.price > 0) seen.price = entry.price;
       continue;
     }
+    entry.duplicates = [];
     byTitle.set(key, entry);
     products.push(entry);
   }
@@ -250,11 +279,87 @@ function readCatalog(html) {
   return { from, end, current: JSON.parse(line.slice(PREFIX.length).replace(/;\s*$/, '')) };
 }
 
+/* ---------- partial export ---------- */
+
+/* A field the export leaves blank is a field Shopify has nothing to say about,
+   not an instruction to clear what the catalog already holds: an unpublished
+   product exports no image, and a product with no colour metafield falls back
+   to the house palette. On a full export that distinction does not matter --
+   every product is rebuilt from scratch -- but on a partial one it is the
+   difference between a refresh and quiet data loss. */
+const blank = v => v === '' || v === 0 || (Array.isArray(v) && v.length === 0);
+
+/* The same product entered twice in Shopify becomes one storefront entry under
+   one of its two handles, and which one wins is just export row order. Checkout
+   resolves price and size against that handle, and a homepage card may name it,
+   so a refresh must not let row order swap it: this re-points a merged entry at
+   the handle the catalog already chose, and brings that handle's own title,
+   price, size, description and lead image along with it. Stock, SKUs and the
+   rest of the photos stay pooled across both. */
+function alignTo(product, handle) {
+  if (product.handle === handle) return product;
+  const alt = (product.duplicates || []).find(d => d.handle === handle);
+  if (!alt) return product;
+  const images = [...new Set([...alt.images, ...product.images])];
+  return {
+    ...product,
+    handle: alt.handle,
+    title: alt.title,
+    price: alt.price,
+    variants: alt.variants,
+    description: alt.description,
+    swatches: alt.swatches,
+    hasColors: alt.hasColors,
+    image: images[0] || '',
+    images,
+  };
+}
+
+/* Refresh the products the export lists, leave the rest of the catalog alone.
+   Returns a new array; `current` is not mutated. `renamed` collects the entries
+   whose primary handle moved -- a rename, not a drop, which the reporting below
+   would otherwise read as a product leaving the store. */
+function mergeInto(current, imported, shape, renamed) {
+  const catalog = current.map(p => ({ ...p }));
+  const entryAt = new Map();
+  current.forEach((p, i) => {
+    new Set([p.handle, ...(p.sourceHandles || [])]).forEach(h => entryAt.set(h, i));
+  });
+
+  const added = [];
+  imported.forEach(product => {
+    const at = product.sourceHandles.map(h => entryAt.get(h)).find(i => i !== undefined);
+    if (at === undefined) { added.push({ next: shape(product), published: product.published }); return; }
+    const held = catalog[at];
+    const p = alignTo(product, held.handle);
+    const next = shape(p);
+
+    // A person placed this product on a shelf, named its brand and decided
+    // whether it still reads as new, so those survive the refresh, as does the
+    // position it holds on the page and the handle the storefront links to.
+    next.badge = held.badge;
+    next.sourceHandles = [...new Set([...(held.sourceHandles || [held.handle]), ...p.sourceHandles])];
+    ['image', 'images', 'description', 'skus', 'price'].forEach(k => {
+      if (blank(next[k]) && !blank(held[k])) next[k] = held[k];
+    });
+    if (!p.hasColors) next.swatches = held.swatches;
+    next.available = next.inventory > 0;
+    if (next.handle !== held.handle) renamed.push(`${held.handle} -> ${next.handle}`);
+    catalog[at] = next;
+  });
+
+  // New arrivals lead the storefront, the same way they do on a full import,
+  // with the ones that cannot be bought yet behind the ones that can.
+  added.sort((a, b) => Number(b.published) - Number(a.published));
+  return [...added.map(a => a.next), ...catalog];
+}
+
 function main() {
   const csvPath = process.argv[2];
   const write = process.argv.includes('--write');
+  const merge = process.argv.includes('--merge');
   if (!csvPath) {
-    console.error('usage: node tools/import-products.js <products_export.csv> [--write]');
+    console.error('usage: node tools/import-products.js <products_export.csv> [--merge] [--write]');
     process.exit(2);
   }
 
@@ -309,7 +414,7 @@ function main() {
     .sort((a, b) => Number(b.published) - Number(a.published));
   const existing = imported.filter(p => !p.isNew).sort((a, b) => rank(a) - rank(b));
 
-  const catalog = [...fresh, ...existing].map(p => ({
+  const shape = p => ({
     id: 'catalog-' + p.handle,
     handle: p.handle,
     title: p.title,
@@ -329,12 +434,22 @@ function main() {
     inventory: p.inventory,
     sourceHandles: p.sourceHandles,
     available: p.inventory > 0,
-  }));
+  });
 
-  const dropped = current.filter(p => !catalog.some(n => n.handle === p.handle));
-  console.log(`catalog: ${current.length} -> ${catalog.length} products`);
+  const renamed = [];
+  const catalog = merge
+    ? mergeInto(current, imported, shape, renamed)
+    : [...fresh, ...existing].map(shape);
+
+  // A product the export still carries under one of its other handles has not
+  // left the store, so it is measured against every handle an entry answers to.
+  const live = new Set();
+  catalog.forEach(p => [p.handle, ...(p.sourceHandles || [])].forEach(h => live.add(h)));
+  const dropped = current.filter(p => ![p.handle, ...(p.sourceHandles || [])].some(h => live.has(h)));
+  console.log(`catalog: ${current.length} -> ${catalog.length} products${merge ? '  (merge)' : ''}`);
   console.log(`  new:     ${fresh.length}`);
   console.log(`  dropped: ${dropped.length}${dropped.length ? ' (' + dropped.map(p => p.handle).join(', ') + ')' : ''}`);
+  if (renamed.length) console.log(`  renamed: ${renamed.length} (${renamed.join(', ')})`);
   const cats = {};
   catalog.forEach(p => { cats[p.category] = (cats[p.category] || 0) + 1; });
   Object.entries(cats).sort((a, b) => b[1] - a[1]).forEach(([c, n]) => console.log(`  ${String(n).padStart(4)}  ${c}`));
