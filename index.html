@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<noscript><img height="1" width="1" style="display:none" src="https://www.facebook.com/tr?id=1078658681301672&ev=PageView&noscript=1" alt="" /></noscript>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#ffffff">
@@ -1226,11 +1227,22 @@ async function eeStartShopifyCheckout(){
    Until then, events log to the browser console (debug mode) and
    nothing is sent anywhere. */
 const EE_GA_ID='G-XXXXXXXXXX';
+/* Meta (Facebook) Pixel — same Pixel ID already registered through Shopify's
+   Facebook & Instagram sales channel, so browsing on this custom storefront
+   and the Shopify-hosted checkout report into one dataset. Override at build
+   time with a META_PIXEL_ID env var if the pixel ever changes. */
+const EE_META_PIXEL_ID='1078658681301672';
 (function(){const live=/^G-[A-Z0-9]{6,}$/.test(EE_GA_ID)&&!EE_GA_ID.includes('XXXX');
 window.dataLayer=window.dataLayer||[];window.gtag=function(){dataLayer.push(arguments)};
 if(live){const s=document.createElement('script');s.async=true;s.src='https://www.googletagmanager.com/gtag/js?id='+EE_GA_ID;document.head.appendChild(s);
 gtag('js',new Date());gtag('config',EE_GA_ID,{send_page_view:true});}
-window.eeTrack=function(name,params){params=params||{};if(live){gtag('event',name,params)}else{console.debug('[EE analytics]',name,params)}};
+const metaLive=/^[0-9]{9,}$/.test(EE_META_PIXEL_ID);
+if(metaLive){!function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,document,'script','https://connect.facebook.net/en_US/fbevents.js');
+fbq('init',EE_META_PIXEL_ID);fbq('track','PageView');}
+function metaParams(p){const out={};if(p&&p.currency)out.currency=p.currency;if(p&&typeof p.value==='number')out.value=p.value;if(p&&Array.isArray(p.items)&&p.items.length){out.content_ids=p.items.map(i=>i.item_id).filter(Boolean);out.content_type='product';out.content_name=p.items[0].item_name}return out}
+const EE_META_EVENT_MAP={view_item:'ViewContent',add_to_cart:'AddToCart',add_to_wishlist:'AddToWishlist',begin_checkout:'InitiateCheckout',generate_lead:'Lead'};
+window.eeTrack=function(name,params){params=params||{};if(live){gtag('event',name,params)}else{console.debug('[EE analytics]',name,params)}
+if(metaLive&&window.fbq){const mapped=EE_META_EVENT_MAP[name];const fp=metaParams(params);if(mapped){fbq('track',mapped,fp)}else{fbq('trackCustom',name,fp)}}};
 /* When Shopify customer accounts go live, identify the account here:
    gtag('set',{user_id: SHOPIFY_CUSTOMER_ID});  (never use email/phone as user_id) */
 
