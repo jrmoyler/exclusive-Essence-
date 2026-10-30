@@ -57,6 +57,11 @@ const DEFAULT_SWATCHES = ['#111111', '#4A2A1A', '#8B5A3C'];
    handle so a retyped `Type` in Shopify can never silently reshuffle the site.
    Every value must be one of DEPARTMENTS in index.html. */
 const NEW_PRODUCT_CATEGORIES = {
+  // Exclusive Essence bundles, added 2026-10-29
+  'italian-curly-hair-bundle': 'Human Hair',
+  'body-wave-hair-bundle': 'Human Hair',
+  'loose-wave-hair-bundle': 'Human Hair',
+  'straight-hair-bundle': 'Human Hair',
   // Grooming tools and clipper accessories
   'joy-3-in-1-pin-tail-edge-brush-comb': 'Tools & Accessories',
   'wahl-vanish-cutter-foil-head': 'Tools & Accessories',

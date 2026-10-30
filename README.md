@@ -48,11 +48,13 @@ Lead endpoint (read at runtime by api/leads.js, never written into the page):
 - `KLAVIYO_LIST_ID` = <list id, optional>
 
 ## Catalog
-`const PRODUCTS` in `index.html` is a snapshot of the Shopify catalog: 687
+`const PRODUCTS` in `index.html` is a baseline snapshot of the Shopify catalog: 687
 entries covering all 702 product handles in the export, across the 8 site
 categories. (The counts differ because 15 products are entered in Shopify
 twice — once under a slug and once under a barcode — and are merged into one
-storefront entry whose `sourceHandles` lists both.) It is generated, not
+storefront entry whose `sourceHandles` lists both.) Four house-brand bundles
+extend that baseline to 691 displayed products (see the bundle section below).
+The baseline is generated, not
 hand-edited. Because it is a snapshot, price, stock and new products drift the
 moment Shopify changes — re-generate it after any significant catalog change:
 
@@ -90,6 +92,24 @@ unreliable:
   products, so trusting it would collapse the brand carousel and the brand
   filter to one label. The brand already recorded for a handle wins; a new
   handle reads `Vendor` only when it names a real brand.
+
+## Exclusive Essence hair bundles
+
+Four house-brand bundle products are added to Human Hair by
+`assets/bundle-catalog.js`: Italian Curly, Body Wave, Loose Wave, and Straight.
+The snapshot records exact Shopify variant IDs, prices, and available stock
+as of 2026-10-29. Update this file when bundle prices or stock change.
+`assets/bundle-storefront.js` supplies length selection, selected-length cart
+pricing, stock limits, and exact-variant Shopify cart links. Shopify validates
+current availability at checkout; the website stock labels are a snapshot,
+not a real-time inventory subscription.
+
+The generated baseline catalog is preserved. Bundle entries are deduplicated
+by handle when a later CSV import also includes them. The four new handles
+are recognized by the importer's curated category map. Existing single-variant
+products retain their checkout flow. Bundle-only carts use Shopify's native
+cart links; mixed carts resolve legacy variants using the existing Storefront
+API connection before building the same native cart link.
 
 ## Health checks
 - `GET /api/leads` — config probe (booleans + token prefix, no secrets)

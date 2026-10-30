@@ -14,6 +14,7 @@ set -euo pipefail
 
 OUT="public"
 node tools/verify-homepage-cards.js
+node tools/verify-bundles.js
 rm -rf "$OUT"
 mkdir -p "$OUT"
 cp index.html "$OUT/index.html"
